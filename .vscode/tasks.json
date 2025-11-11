@@ -1,0 +1,44 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build C++",
+            "type": "shell",
+            "command": "${workspaceFolder}/build.bat",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        }
+    ]
+}
+// {
+//     "version": "2.0.0",
+//     "tasks": [
+//         {
+//             "label": "Build C++",
+//             "type": "shell",
+//             "command": "g++",
+//             "args": [
+//                 "-std=c++20",
+//                 "-g",
+//                 "-O0",
+//                 "../code/win32_handmade.cpp",
+//                 "-o",
+//                 "main"
+//             ],
+//             "options": {
+//                 "cwd": "${workspaceFolder}/build"
+//             },
+//             "group": {
+//                 "kind": "build",
+//                 "isDefault": true
+//             },
+//             "problemMatcher": ["$gcc"]
+//         }
+//     ]
+// }

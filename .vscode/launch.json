@@ -1,0 +1,23 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug C++",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/main.exe",
+            "args": [],
+            "stopAtEntry": true,
+            "cwd": "${workspaceFolder}/data",
+            "environment": [],
+            "externalConsole": true,
+            // "preLaunchTask": "Build C++",
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:/Program Files/msys64/mingw64/bin/gdb.exe",
+            "targetArchitecture": "arm64"
+        }
+    ]
+}
