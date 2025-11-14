@@ -1,5 +1,62 @@
 #include <windows.h>
 
+#define internal static
+#define local_persist static
+#define global_variable static
+
+// TODO: Global variable for now.
+global_variable bool running;
+
+global_variable BITMAPINFO bitmap_info;
+global_variable void *bitmap_memory;
+global_variable HBITMAP bitmap_handle;
+global_variable HDC bitmap_device_context;
+
+internal void ResizeDIBSection(int width, int height) {
+  // TODO: Bulletbroof freeing DIBSection.
+  // TODO: Maybe not free first, free after, then free first if that fails
+  if (bitmap_handle) {
+    DeleteObject(bitmap_handle);
+  }
+
+  if (!bitmap_device_context) {
+    bitmap_device_context = CreateCompatibleDC(0);
+  }
+
+  bitmap_info.bmiHeader.biSize = sizeof(bitmap_info.bmiHeader);
+  bitmap_info.bmiHeader.biWidth = width;
+  bitmap_info.bmiHeader.biHeight = height;
+  bitmap_info.bmiHeader.biPlanes = 1;
+  bitmap_info.bmiHeader.biBitCount = 32;
+  bitmap_info.bmiHeader.biCompression = BI_RGB;
+
+  bitmap_handle = CreateDIBSection(bitmap_device_context,
+                                   &bitmap_info,
+                                   DIB_RGB_COLORS,
+                                   &bitmap_memory,
+                                   0,
+                                   0);
+
+  ReleaseDC(0, bitmap_device_context);
+}
+
+internal void
+UpdateWindow(HDC device_context, int x, int y, int width, int height) {
+  StretchDIBits(device_context,
+                x,
+                y,
+                width,
+                height,
+                x,
+                y,
+                width,
+                height,
+                bitmap_memory,
+                &bitmap_info,
+                DIB_RGB_COLORS,
+                SRCCOPY);
+}
+
 LRESULT CALLBACK MainWindowCallback(HWND window,
                                     UINT message,
                                     WPARAM wparam,
@@ -8,16 +65,22 @@ LRESULT CALLBACK MainWindowCallback(HWND window,
 
   switch (message) {
     case WM_SIZE: {
-      OutputDebugStringA("WM_SIZE");
-    } break;
-    case WM_DESTROY: {
-      OutputDebugStringA("WM_DESTROY");
+      RECT client_rect;
+      GetClientRect(window, &client_rect);
+      int width = client_rect.right - client_rect.left;
+      int height = client_rect.bottom - client_rect.top;
+      ResizeDIBSection(width, height);
     } break;
     case WM_CLOSE: {
-      OutputDebugStringA("WM_CLOSE");
+      // TODO: Handle this with a message to user.
+      running = false;
     } break;
     case WM_ACTIVATEAPP: {
       OutputDebugStringA("WM_ACTIVATEAPP");
+    } break;
+    case WM_DESTROY: {
+      // TODO: Handle this as an error - recreate window?
+      running = false;
     } break;
     case WM_PAINT: {
       PAINTSTRUCT paint;
@@ -26,13 +89,7 @@ LRESULT CALLBACK MainWindowCallback(HWND window,
       int y = paint.rcPaint.top;
       int width = paint.rcPaint.right - paint.rcPaint.left;
       int height = paint.rcPaint.bottom - paint.rcPaint.top;
-      static DWORD operation = WHITENESS;
-      PatBlt(device_context, x, y, width, height, operation);
-      if (operation == WHITENESS) {
-        operation = BLACKNESS;
-      } else {
-        operation = WHITENESS;
-      }
+      UpdateWindow(device_context, x, y, width, height);
       EndPaint(window, &paint);
     } break;
     default: {
@@ -70,7 +127,8 @@ int CALLBACK WinMain(HINSTANCE instance,
 
     if (window_handle) {
       MSG message;
-      while (true) {
+      running = true;
+      while (running) {
         BOOL message_result = GetMessage(&message, 0, 0, 0);
         if (message_result > 0) {
           TranslateMessage(&message);
