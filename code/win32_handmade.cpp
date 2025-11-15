@@ -5,24 +5,42 @@
 #define local_persist static
 #define global_variable static
 
+struct OffscreenBuffer {
+  BITMAPINFO info;
+  void *memory;
+  int width;
+  int height;
+  int pitch;
+  int bytes_per_pixel;
+};
+
+struct WindowDimension {
+  int width;
+  int height;
+};
+
 // TODO: Global variable for now.
 global_variable bool running;
+global_variable OffscreenBuffer buffer;
 
-global_variable BITMAPINFO bitmap_info;
-global_variable void *bitmap_memory;
-global_variable int bitmap_width;
-global_variable int bitmap_height;
-global_variable int bytes_per_pixel = 4;
+internal WindowDimension GetWindowDimension(HWND window) {
+  WindowDimension result;
 
-internal void RenderWeirdGradient(int x_offset, int y_offset) {
-  int width = bitmap_width;
-  int height = bitmap_height;
+  RECT client_rect;
+  GetClientRect(window, &client_rect);
+  result.width = client_rect.right - client_rect.left;
+  result.height = client_rect.bottom - client_rect.top;
 
-  int pitch = width * bytes_per_pixel;
-  uint8_t *row = (uint8_t *)bitmap_memory;
-  for (int y = 0; y < bitmap_height; ++y) {
+  return result;
+}
+
+internal void RenderWeirdGradient(OffscreenBuffer *buffer,
+                                  int x_offset,
+                                  int y_offset) {
+  uint8_t *row = (uint8_t *)buffer->memory;
+  for (int y = 0; y < buffer->height; ++y) {
     uint32_t *pixel = (uint32_t *)row;
-    for (int x = 0; x < bitmap_width; ++x) {
+    for (int x = 0; x < buffer->width; ++x) {
       // LITTLE ENDIAN FORMAT
       // pixel in memory: BB GG RR xx
       // pixel in register: xx RR GG BB
@@ -32,51 +50,54 @@ internal void RenderWeirdGradient(int x_offset, int y_offset) {
       *pixel++ = ((green << 8) | blue);
     }
 
-    row += pitch;
+    row += buffer->pitch;
   }
 }
 
-internal void ResizeDIBSection(int width, int height) {
+internal void ResizeDIBSection(OffscreenBuffer *buffer, int width, int height) {
   // TODO: Bulletbroof freeing DIBSection.
   // TODO: Maybe not free first, free after, then free first if that fails
-  if (bitmap_memory) {
-    VirtualFree(bitmap_memory, 0, MEM_RELEASE);
+  if (buffer->memory) {
+    VirtualFree(buffer->memory, 0, MEM_RELEASE);
   }
 
-  bitmap_width = width;
-  bitmap_height = height;
+  buffer->width = width;
+  buffer->height = height;
+  buffer->bytes_per_pixel = 4;
+  buffer->pitch = buffer->width * buffer->bytes_per_pixel;
 
-  bitmap_info.bmiHeader.biSize = sizeof(bitmap_info.bmiHeader);
-  bitmap_info.bmiHeader.biWidth = bitmap_width;
-  bitmap_info.bmiHeader.biHeight = -bitmap_height;
-  bitmap_info.bmiHeader.biPlanes = 1;
-  bitmap_info.bmiHeader.biBitCount = 32;
-  bitmap_info.bmiHeader.biCompression = BI_RGB;
+  buffer->info.bmiHeader.biSize = sizeof(buffer->info.bmiHeader);
+  buffer->info.bmiHeader.biWidth = buffer->width;
+  buffer->info.bmiHeader.biHeight = -buffer->height;
+  buffer->info.bmiHeader.biPlanes = 1;
+  buffer->info.bmiHeader.biBitCount = 32;
+  buffer->info.bmiHeader.biCompression = BI_RGB;
 
-  int bitmap_memory_size = bitmap_width * bitmap_height * bytes_per_pixel;
-  bitmap_memory =
+  int bitmap_memory_size =
+      buffer->width * buffer->height * buffer->bytes_per_pixel;
+  buffer->memory =
       VirtualAlloc(0, bitmap_memory_size, MEM_COMMIT, PAGE_READWRITE);
 }
 
-internal void UpdateWindow(HDC device_context,
-                           RECT *client_rect,
-                           int x,
-                           int y,
-                           int width,
-                           int height) {
-  int client_width = client_rect->right - client_rect->left;
-  int client_height = client_rect->bottom - client_rect->top;
+internal void DisplayBufferInWindow(HDC device_context,
+                                    int window_width,
+                                    int window_height,
+                                    OffscreenBuffer *buffer,
+                                    int x,
+                                    int y,
+                                    int width,
+                                    int height) {
   StretchDIBits(device_context,
                 0,
                 0,
-                client_width,
-                client_height,
+                window_width,
+                window_height,
                 0,
                 0,
-                bitmap_width,
-                bitmap_height,
-                bitmap_memory,
-                &bitmap_info,
+                buffer->width,
+                buffer->height,
+                buffer->memory,
+                &buffer->info,
                 DIB_RGB_COLORS,
                 SRCCOPY);
 }
@@ -89,11 +110,7 @@ LRESULT CALLBACK MainWindowCallback(HWND window,
 
   switch (message) {
     case WM_SIZE: {
-      RECT client_rect;
-      GetClientRect(window, &client_rect);
-      int width = client_rect.right - client_rect.left;
-      int height = client_rect.bottom - client_rect.top;
-      ResizeDIBSection(width, height);
+      OutputDebugStringA("WM_SIZE");
     } break;
     case WM_CLOSE: {
       // TODO: Handle this with a message to user.
@@ -114,9 +131,15 @@ LRESULT CALLBACK MainWindowCallback(HWND window,
       int width = paint.rcPaint.right - paint.rcPaint.left;
       int height = paint.rcPaint.bottom - paint.rcPaint.top;
 
-      RECT client_rect;
-      GetClientRect(window, &client_rect);
-      UpdateWindow(device_context, &client_rect, x, y, width, height);
+      WindowDimension dimension = GetWindowDimension(window);
+      DisplayBufferInWindow(device_context,
+                            dimension.width,
+                            dimension.height,
+                            &buffer,
+                            x,
+                            y,
+                            width,
+                            height);
 
       EndPaint(window, &paint);
     } break;
@@ -139,6 +162,8 @@ int CALLBACK WinMain(HINSTANCE instance,
   window_class.hInstance = instance;
   window_class.lpszClassName = "HandmadeHeroWindowClass";
 
+  ResizeDIBSection(&buffer, 1280, 720);
+
   if (RegisterClassA(&window_class)) {
     HWND window = CreateWindowExA(0,
                                   window_class.lpszClassName,
@@ -154,6 +179,9 @@ int CALLBACK WinMain(HINSTANCE instance,
                                   0);
 
     if (window) {
+      // NOTE: since we've specified CS_OWNDC, we can just get one
+      // device_context and use it forever, since we are not sharing it.
+      HDC device_context = GetDC(window);
       MSG message;
       running = true;
       int x_offset = 0;
@@ -168,16 +196,17 @@ int CALLBACK WinMain(HINSTANCE instance,
           DispatchMessage(&message);
         }
 
-        RenderWeirdGradient(x_offset, y_offset);
+        RenderWeirdGradient(&buffer, x_offset, y_offset);
 
-        HDC device_context = GetDC(window);
-        RECT client_rect;
-        GetClientRect(window, &client_rect);
-        int client_width = client_rect.right - client_rect.left;
-        int client_height = client_rect.bottom - client_rect.top;
-        UpdateWindow(
-            device_context, &client_rect, 0, 0, client_width, client_height);
-        ReleaseDC(window, device_context);
+        WindowDimension dimension = GetWindowDimension(window);
+        DisplayBufferInWindow(device_context,
+                              dimension.width,
+                              dimension.height,
+                              &buffer,
+                              0,
+                              0,
+                              dimension.width,
+                              dimension.height);
 
         x_offset += 1;
         y_offset += 1;
