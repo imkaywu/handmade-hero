@@ -7,7 +7,7 @@
 
 struct OffscreenBuffer {
   BITMAPINFO info;
-  void *memory;
+  void* memory;
   int width;
   int height;
   int pitch;
@@ -34,12 +34,12 @@ internal WindowDimension GetWindowDimension(HWND window) {
   return result;
 }
 
-internal void RenderWeirdGradient(OffscreenBuffer *buffer,
+internal void RenderWeirdGradient(OffscreenBuffer* buffer,
                                   int x_offset,
                                   int y_offset) {
-  uint8_t *row = (uint8_t *)buffer->memory;
+  uint8_t* row = (uint8_t*)buffer->memory;
   for (int y = 0; y < buffer->height; ++y) {
-    uint32_t *pixel = (uint32_t *)row;
+    uint32_t* pixel = (uint32_t*)row;
     for (int x = 0; x < buffer->width; ++x) {
       // LITTLE ENDIAN FORMAT
       // pixel in memory: BB GG RR xx
@@ -54,7 +54,7 @@ internal void RenderWeirdGradient(OffscreenBuffer *buffer,
   }
 }
 
-internal void ResizeDIBSection(OffscreenBuffer *buffer, int width, int height) {
+internal void ResizeDIBSection(OffscreenBuffer* buffer, int width, int height) {
   // TODO: Bulletbroof freeing DIBSection.
   // TODO: Maybe not free first, free after, then free first if that fails
   if (buffer->memory) {
@@ -82,7 +82,7 @@ internal void ResizeDIBSection(OffscreenBuffer *buffer, int width, int height) {
 internal void DisplayBufferInWindow(HDC device_context,
                                     int window_width,
                                     int window_height,
-                                    OffscreenBuffer *buffer,
+                                    OffscreenBuffer* buffer,
                                     int x,
                                     int y,
                                     int width,
@@ -188,7 +188,7 @@ int CALLBACK WinMain(HINSTANCE instance,
       int y_offset = 0;
 
       while (running) {
-        if (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
+        while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
           if (message.message == WM_QUIT) {
             running = false;
           }
