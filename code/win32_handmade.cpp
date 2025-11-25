@@ -1,5 +1,8 @@
 #include <stdint.h>
 #include <windows.h>
+#include <xinput.h>
+
+#include <iostream>
 
 #define internal static
 #define local_persist static
@@ -22,6 +25,32 @@ struct WindowDimension {
 // TODO: Global variable for now.
 global_variable bool running;
 global_variable OffscreenBuffer buffer;
+
+// NOTE: XInputGetState
+#define X_INPUT_GET_STATE(name) \
+  DWORD WINAPI name(DWORD user_index, XINPUT_STATE* state)
+typedef X_INPUT_GET_STATE(x_input_get_state);
+X_INPUT_GET_STATE(XInputGetStateStub) { return 0; }
+global_variable x_input_get_state* XInputGetState_ = XInputGetStateStub;
+#define XInputGetState XInputGetState_
+
+// NOTE: XInputSetState
+#define X_INPUT_SET_STATE(name) \
+  DWORD WINAPI name(DWORD user_index, XINPUT_VIBRATION* vibration)
+typedef X_INPUT_SET_STATE(x_input_set_state);
+X_INPUT_SET_STATE(XInputSetStateStub) { return 0; }
+global_variable x_input_set_state* XInputSetState_ = XInputSetStateStub;
+#define XInputSetState XInputSetState_
+
+internal void LoadXInput() {
+  HMODULE xinput_library = LoadLibraryA("xinput1_4.dll");
+  if (xinput_library) {
+    XInputGetState =
+        (x_input_get_state*)GetProcAddress(xinput_library, "XInputGetState");
+    XInputSetState =
+        (x_input_set_state*)GetProcAddress(xinput_library, "XInputSetState");
+  }
+}
 
 internal WindowDimension GetWindowDimension(HWND window) {
   WindowDimension result;
@@ -79,14 +108,10 @@ internal void ResizeDIBSection(OffscreenBuffer* buffer, int width, int height) {
       VirtualAlloc(0, bitmap_memory_size, MEM_COMMIT, PAGE_READWRITE);
 }
 
-internal void DisplayBufferInWindow(HDC device_context,
+internal void DisplayBufferInWindow(OffscreenBuffer* buffer,
+                                    HDC device_context,
                                     int window_width,
-                                    int window_height,
-                                    OffscreenBuffer* buffer,
-                                    int x,
-                                    int y,
-                                    int width,
-                                    int height) {
+                                    int window_height) {
   StretchDIBits(device_context,
                 0,
                 0,
@@ -123,6 +148,36 @@ LRESULT CALLBACK MainWindowCallback(HWND window,
       // TODO: Handle this as an error - recreate window?
       running = false;
     } break;
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP:
+    case WM_KEYDOWN:
+    case WM_KEYUP: {
+      uint32_t vk_code = wparam;
+      bool was_down = ((lparam & (1 << 30)) != 0);
+      bool is_down = (lparam & (1 << 31)) == 0;
+      if (is_down != was_down) {
+        if (vk_code == 'W') {
+        } else if (vk_code == 'A') {
+        } else if (vk_code == 'S') {
+        } else if (vk_code == 'D') {
+        } else if (vk_code == 'Q') {
+        } else if (vk_code == 'E') {
+        } else if (vk_code == VK_UP) {
+        } else if (vk_code == VK_DOWN) {
+        } else if (vk_code == VK_LEFT) {
+        } else if (vk_code == VK_RIGHT) {
+        } else if (vk_code == VK_SPACE) {
+        } else if (vk_code == VK_ESCAPE) {
+          std::cout << "ESCAPE: ";
+          if (is_down) {
+            std::cout << "is down ";
+          }
+          if (was_down) {
+            std::cout << "was down\n";
+          }
+        }
+      }
+    } break;
     case WM_PAINT: {
       PAINTSTRUCT paint;
       HDC device_context = BeginPaint(window, &paint);
@@ -132,14 +187,8 @@ LRESULT CALLBACK MainWindowCallback(HWND window,
       int height = paint.rcPaint.bottom - paint.rcPaint.top;
 
       WindowDimension dimension = GetWindowDimension(window);
-      DisplayBufferInWindow(device_context,
-                            dimension.width,
-                            dimension.height,
-                            &buffer,
-                            x,
-                            y,
-                            width,
-                            height);
+      DisplayBufferInWindow(
+          &buffer, device_context, dimension.width, dimension.height);
 
       EndPaint(window, &paint);
     } break;
@@ -156,6 +205,8 @@ int CALLBACK WinMain(HINSTANCE instance,
                      HINSTANCE prev_instance,
                      LPSTR cmd_line,
                      int cmd_show) {
+  LoadXInput();
+
   WNDCLASSA window_class = {};
   window_class.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
   window_class.lpfnWndProc = MainWindowCallback;
@@ -196,20 +247,48 @@ int CALLBACK WinMain(HINSTANCE instance,
           DispatchMessage(&message);
         }
 
+        for (DWORD i = 0; i < XUSER_MAX_COUNT; ++i) {
+          XINPUT_STATE input_state;
+          if (XInputGetState(i, &input_state) == ERROR_SUCCESS) {
+            // TODO: see if |input_state.dwPacketNumber| increments too rapidly.
+            XINPUT_GAMEPAD* pad = &input_state.Gamepad;
+
+            bool up = pad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
+            bool down = pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
+            bool left = pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
+            bool right = pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
+            bool start = pad->wButtons & XINPUT_GAMEPAD_START;
+            bool back = pad->wButtons & XINPUT_GAMEPAD_BACK;
+            bool left_shoulder = pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
+            bool right_shoulder = pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
+            bool a_button = pad->wButtons & XINPUT_GAMEPAD_A;
+            bool b_button = pad->wButtons & XINPUT_GAMEPAD_B;
+            bool x_button = pad->wButtons & XINPUT_GAMEPAD_X;
+            bool y_button = pad->wButtons & XINPUT_GAMEPAD_Y;
+
+            int16_t stick_x = pad->sThumbLX;
+            int16_t stick_y = pad->sThumbLY;
+
+            if (a_button) {
+              y_offset += 1;
+            }
+          } else {
+            // NOTE: controller is not available
+          }
+        }
+
+        XINPUT_VIBRATION vibration;
+        vibration.wLeftMotorSpeed = 60000;
+        vibration.wRightMotorSpeed = 60000;
+        XInputSetState(0, &vibration);
+
         RenderWeirdGradient(&buffer, x_offset, y_offset);
 
         WindowDimension dimension = GetWindowDimension(window);
-        DisplayBufferInWindow(device_context,
-                              dimension.width,
-                              dimension.height,
-                              &buffer,
-                              0,
-                              0,
-                              dimension.width,
-                              dimension.height);
+        DisplayBufferInWindow(
+            &buffer, device_context, dimension.width, dimension.height);
 
         x_offset += 1;
-        y_offset += 1;
       }
     } else {
       // TODO: Logging
