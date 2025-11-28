@@ -26,6 +26,7 @@ struct WindowDimension {
 // TODO: Global variable for now.
 global_variable bool running;
 global_variable OffscreenBuffer buffer;
+global_variable LPDIRECTSOUNDBUFFER secondary_buffer;
 
 // NOTE: XInputGetState
 #define X_INPUT_GET_STATE(name) \
@@ -116,7 +117,6 @@ internal void InitDSound(HWND window,
       buffer_description.dwBufferBytes = buffer_size;
       buffer_description.lpwfxFormat = &wave_format;
 
-      LPDIRECTSOUNDBUFFER secondary_buffer;
       if (SUCCEEDED(direct_sound->CreateSoundBuffer(
               &buffer_description, &secondary_buffer, 0))) {
         // Start it playing
@@ -312,13 +312,24 @@ int CALLBACK WinMain(HINSTANCE instance,
       // NOTE: since we've specified CS_OWNDC, we can just get one
       // device_context and use it forever, since we are not sharing it.
       HDC device_context = GetDC(window);
+
       MSG message;
-      running = true;
       int x_offset = 0;
       int y_offset = 0;
 
-      InitDSound(window, 48000, 48000 * sizeof(int16_t) * 2);
+      int samples_per_second = 48000;
+      int bytes_per_sample = sizeof(int16_t) * 2;
+      int secondary_buffer_size = samples_per_second * bytes_per_sample;
+      int tone_hz = 256;  // cycles per second
+      int tone_volume = 3000;
+      uint32_t sample_index = 0;
+      int square_wave_period = samples_per_second / tone_hz;
+      int half_square_wave_period = square_wave_period / 2;
 
+      InitDSound(window, samples_per_second, secondary_buffer_size);
+      bool sound_playing = false;
+
+      running = true;
       while (running) {
         while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
           if (message.message == WM_QUIT) {
@@ -350,26 +361,78 @@ int CALLBACK WinMain(HINSTANCE instance,
             int16_t stick_x = pad->sThumbLX;
             int16_t stick_y = pad->sThumbLY;
 
-            if (a_button) {
-              y_offset += 1;
-            }
+            x_offset += stick_x >> 12;
+            y_offset += stick_y >> 12;
           } else {
             // NOTE: controller is not available
           }
         }
 
-        XINPUT_VIBRATION vibration;
-        vibration.wLeftMotorSpeed = 60000;
-        vibration.wRightMotorSpeed = 60000;
-        XInputSetState(0, &vibration);
-
         RenderWeirdGradient(&buffer, x_offset, y_offset);
+
+        // NOTE: DirectSound output test
+        DWORD play_cursor;
+        DWORD write_cursor;
+        if (SUCCEEDED(secondary_buffer->GetCurrentPosition(&play_cursor,
+                                                           &write_cursor))) {
+          DWORD byte_to_lock =
+              (sample_index * bytes_per_sample) % secondary_buffer_size;
+          DWORD bytes_to_write;
+          if (byte_to_lock == play_cursor) {
+            bytes_to_write = secondary_buffer_size;
+          } else if (byte_to_lock > play_cursor) {
+            bytes_to_write = secondary_buffer_size - byte_to_lock + play_cursor;
+          } else {
+            bytes_to_write = play_cursor - byte_to_lock;
+          }
+
+          void* region1;
+          DWORD region1_size;  // in bytes
+          void* region2;
+          DWORD region2_size;  // in bytes
+          if (SUCCEEDED(secondary_buffer->Lock(byte_to_lock,
+                                               bytes_to_write,
+                                               &region1,
+                                               &region1_size,
+                                               &region2,
+                                               &region2_size,
+                                               0))) {
+            // TODO: assert that region1_size and region2_size are valid
+            int16_t* sample_out = (int16_t*)region1;
+            DWORD region1_sample_count = region1_size / bytes_per_sample;
+            for (DWORD i = 0; i < region1_sample_count; ++i) {
+              int16_t sample_value =
+                  ((sample_index / half_square_wave_period) % 2) ? tone_volume
+                                                                 : -tone_volume;
+              *sample_out++ = sample_value;
+              *sample_out++ = sample_value;
+              ++sample_index;
+            }
+
+            sample_out = (int16_t*)region2;
+            DWORD region2_sample_count = region2_size / bytes_per_sample;
+            for (DWORD i = 0; i < region2_sample_count; ++i) {
+              int16_t sample_value =
+                  ((sample_index / half_square_wave_period) % 2) ? tone_volume
+                                                                 : -tone_volume;
+              *sample_out++ = sample_value;
+              *sample_out++ = sample_value;
+              ++sample_index;
+            }
+
+            secondary_buffer->Unlock(
+                region1, region1_size, region2, region2_size);
+          }
+        }
+
+        if (!sound_playing) {
+          secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
+          sound_playing = true;
+        }
 
         WindowDimension dimension = GetWindowDimension(window);
         DisplayBufferInWindow(
             &buffer, device_context, dimension.width, dimension.height);
-
-        x_offset += 1;
       }
     } else {
       // TODO: Logging
