@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <xinput.h>
 
+#include <iomanip>
 #include <iostream>
 
 #define internal static
@@ -42,6 +43,18 @@ struct SoundOutput {
 global_variable bool running;
 global_variable OffscreenBuffer buffer;
 global_variable LPDIRECTSOUNDBUFFER secondary_buffer;
+
+// NOTE:
+//   - x86/x64 gcc/clang: inline asm rdtsc
+//   - MSVC x86/x64: __rdtsc()
+//   - MSVC/clang targeting ARM64 Windows:
+//       _ReadStatusReg(ARM64_SYSREG_CNTVCT_EL0)
+// TODO: Inline assembly, working on Clang
+internal inline uint64_t rdtsc() {
+  unsigned int lo, hi;
+  __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+  return ((uint64_t)hi << 32) | lo;
+}
 
 // NOTE: XInputGetState
 #define X_INPUT_GET_STATE(name) \
@@ -347,15 +360,19 @@ int CALLBACK WinMain(HINSTANCE instance,
                      HINSTANCE prev_instance,
                      LPSTR cmd_line,
                      int cmd_show) {
+  LARGE_INTEGER perf_count_frequency_result;
+  QueryPerformanceFrequency(&perf_count_frequency_result);
+  int64_t perf_count_frequency = perf_count_frequency_result.QuadPart;
+
   LoadXInput();
+
+  ResizeDIBSection(&buffer, 1280, 720);
 
   WNDCLASSA window_class = {};
   window_class.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
   window_class.lpfnWndProc = MainWindowCallback;
   window_class.hInstance = instance;
   window_class.lpszClassName = "HandmadeHeroWindowClass";
-
-  ResizeDIBSection(&buffer, 1280, 720);
 
   if (RegisterClassA(&window_class)) {
     HWND window = CreateWindowExA(0,
@@ -399,6 +416,11 @@ int CALLBACK WinMain(HINSTANCE instance,
           0,
           sound_output.latency_sample_count * sound_output.bytes_per_sample);
       secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
+
+      LARGE_INTEGER last_counter;
+      QueryPerformanceCounter(&last_counter);
+
+      uint64_t last_cycle_count = rdtsc();
 
       running = true;
       while (running) {
@@ -471,6 +493,23 @@ int CALLBACK WinMain(HINSTANCE instance,
         WindowDimension dimension = GetWindowDimension(window);
         DisplayBufferInWindow(
             &buffer, device_context, dimension.width, dimension.height);
+
+        LARGE_INTEGER end_counter;
+        QueryPerformanceCounter(&end_counter);
+        int64_t counter_elapsed = end_counter.QuadPart - last_counter.QuadPart;
+        float ms_per_frame = 1000.0f * counter_elapsed / perf_count_frequency;
+        float fps = (float)perf_count_frequency / counter_elapsed;
+
+        uint64_t end_cycle_count = rdtsc();
+        uint64_t cycle_elapsed = end_cycle_count - last_cycle_count;
+        float micro_cycle_per_frame = cycle_elapsed / (1000.0f * 1000.0f);
+
+        std::cout << std::fixed << std::setprecision(2) << ms_per_frame
+                  << "ms, " << fps << "FPS, " << micro_cycle_per_frame << "mc/f"
+                  << std::endl;
+
+        last_counter = end_counter;
+        last_cycle_count = end_cycle_count;
       }
     } else {
       // TODO: Logging
