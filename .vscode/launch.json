@@ -6,18 +6,15 @@
     "configurations": [
         {
             "name": "Debug C++",
-            "type": "cppdbg",
+            "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/main.exe",
             "args": [],
             "stopAtEntry": true,
             "cwd": "${workspaceFolder}/data",
             "environment": [],
-            "externalConsole": true,
-            // "preLaunchTask": "Build C++",
-            "MIMode": "gdb",
-            "miDebuggerPath": "C:/Program Files/msys64/mingw64/bin/gdb.exe",
-            "targetArchitecture": "arm64"
+            "console": "externalTerminal",
+            // "preLaunchTask": "Build C++"
         }
     ]
 }

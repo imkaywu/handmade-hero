@@ -45,15 +45,15 @@ global_variable OffscreenBuffer buffer;
 global_variable LPDIRECTSOUNDBUFFER secondary_buffer;
 
 // NOTE:
-//   - x86/x64 gcc/clang: inline asm rdtsc
 //   - MSVC x86/x64: __rdtsc()
-//   - MSVC/clang targeting ARM64 Windows:
-//       _ReadStatusReg(ARM64_SYSREG_CNTVCT_EL0)
-// TODO: Inline assembly, working on Clang
+//   - GCC/LLVM ARM64: __builtin_readcyclecounter()
+//   - GCC/LLVM inline assembly
 internal inline uint64_t rdtsc() {
-  unsigned int lo, hi;
-  __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
-  return ((uint64_t)hi << 32) | lo;
+  return __builtin_readcyclecounter();
+
+  uint64_t cnt;
+  __asm__ __volatile__("mrs %0, cntvct_el0" : "=r"(cnt));
+  return cnt;
 }
 
 // NOTE: XInputGetState
