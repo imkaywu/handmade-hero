@@ -13,6 +13,8 @@
 
 #define PI 3.1415926
 
+#include "handmade.cpp"
+
 struct OffscreenBuffer {
   BITMAPINFO info;
   void* memory;
@@ -41,7 +43,7 @@ struct SoundOutput {
 
 // TODO: Global variable for now.
 global_variable bool running;
-global_variable OffscreenBuffer buffer;
+global_variable OffscreenBuffer global_buffer;
 global_variable LPDIRECTSOUNDBUFFER secondary_buffer;
 
 // NOTE:
@@ -217,26 +219,6 @@ internal WindowDimension GetWindowDimension(HWND window) {
   return result;
 }
 
-internal void RenderWeirdGradient(OffscreenBuffer* buffer,
-                                  int x_offset,
-                                  int y_offset) {
-  uint8_t* row = (uint8_t*)buffer->memory;
-  for (int y = 0; y < buffer->height; ++y) {
-    uint32_t* pixel = (uint32_t*)row;
-    for (int x = 0; x < buffer->width; ++x) {
-      // LITTLE ENDIAN FORMAT
-      // pixel in memory: BB GG RR xx
-      // pixel in register: xx RR GG BB
-      uint8_t blue = (x + x_offset);
-      uint8_t green = (y + y_offset);
-
-      *pixel++ = ((green << 8) | blue);
-    }
-
-    row += buffer->pitch;
-  }
-}
-
 internal void ResizeDIBSection(OffscreenBuffer* buffer, int width, int height) {
   // TODO: Bulletbroof freeing DIBSection.
   // TODO: Maybe not free first, free after, then free first if that fails
@@ -343,7 +325,7 @@ LRESULT CALLBACK MainWindowCallback(HWND window,
 
       WindowDimension dimension = GetWindowDimension(window);
       DisplayBufferInWindow(
-          &buffer, device_context, dimension.width, dimension.height);
+          &global_buffer, device_context, dimension.width, dimension.height);
 
       EndPaint(window, &paint);
     } break;
@@ -366,7 +348,7 @@ int CALLBACK WinMain(HINSTANCE instance,
 
   LoadXInput();
 
-  ResizeDIBSection(&buffer, 1280, 720);
+  ResizeDIBSection(&global_buffer, 1280, 720);
 
   WNDCLASSA window_class = {};
   window_class.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
@@ -465,7 +447,12 @@ int CALLBACK WinMain(HINSTANCE instance,
           }
         }
 
-        RenderWeirdGradient(&buffer, x_offset, y_offset);
+        GameOffscreenBuffer buffer = {};
+        buffer.memory = global_buffer.memory;
+        buffer.width = global_buffer.width;
+        buffer.height = global_buffer.height;
+        buffer.pitch = global_buffer.pitch;
+        GameUpdateAndRender(&buffer, x_offset, y_offset);
 
         // NOTE: DirectSound output test
         DWORD play_cursor;
@@ -492,7 +479,7 @@ int CALLBACK WinMain(HINSTANCE instance,
 
         WindowDimension dimension = GetWindowDimension(window);
         DisplayBufferInWindow(
-            &buffer, device_context, dimension.width, dimension.height);
+            &global_buffer, device_context, dimension.width, dimension.height);
 
         LARGE_INTEGER end_counter;
         QueryPerformanceCounter(&end_counter);
