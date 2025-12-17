@@ -15,7 +15,7 @@
 
 #include "handmade.cpp"
 
-struct OffscreenBuffer {
+struct Win32OffscreenBuffer {
   BITMAPINFO info;
   void* memory;
   int width;
@@ -29,7 +29,7 @@ struct WindowDimension {
   int height;
 };
 
-struct SoundOutput {
+struct Win32SoundOutput {
   int samples_per_second;
   int bytes_per_sample;
   int secondary_buffer_size;
@@ -43,7 +43,7 @@ struct SoundOutput {
 
 // TODO: Global variable for now.
 global_variable bool running;
-global_variable OffscreenBuffer global_buffer;
+global_variable Win32OffscreenBuffer global_buffer;
 global_variable LPDIRECTSOUNDBUFFER secondary_buffer;
 
 // NOTE:
@@ -100,9 +100,9 @@ internal void LoadXInput() {
   }
 }
 
-internal void InitDSound(HWND window,
-                         int32_t samples_per_second,
-                         int32_t buffer_size) {
+internal void Win32InitDSound(HWND window,
+                              int32_t samples_per_second,
+                              int32_t buffer_size) {
   // Load the library
   HMODULE dsound_library = LoadLibraryA("dsound.dll");
   if (dsound_library) {
@@ -165,9 +165,36 @@ internal void InitDSound(HWND window,
   }
 }
 
-internal void FillSoundBuffer(SoundOutput* sound_output,
-                              DWORD byte_to_lock,
-                              DWORD bytes_to_write) {
+internal void Win32ClearSoundBuffer(Win32SoundOutput* sound_output) {
+  void* region1;
+  DWORD region1_size;  // in bytes
+  void* region2;
+  DWORD region2_size;  // in bytes
+  if (SUCCEEDED(secondary_buffer->Lock(0,
+                                       sound_output->secondary_buffer_size,
+                                       &region1,
+                                       &region1_size,
+                                       &region2,
+                                       &region2_size,
+                                       0))) {
+    uint8_t* sample = (uint8_t*)region1;
+    for (DWORD i = 0; i < region1_size; ++i) {
+      *sample++ = 0;
+    }
+
+    sample = (uint8_t*)region2;
+    for (DWORD i = 0; i < region2_size; ++i) {
+      *sample++ = 0;
+    }
+
+    secondary_buffer->Unlock(region1, region1_size, region2, region2_size);
+  }
+}
+
+internal void Win32FillSoundBuffer(Win32SoundOutput* sound_output,
+                                   DWORD byte_to_lock,
+                                   DWORD bytes_to_write,
+                                   GameSoundOutputBuffer* sound_buffer) {
   void* region1;
   DWORD region1_size;  // in bytes
   void* region2;
@@ -180,27 +207,20 @@ internal void FillSoundBuffer(SoundOutput* sound_output,
                                        &region2_size,
                                        0))) {
     // TODO: assert that region1_size and region2_size are valid
-    int16_t* sample_out = (int16_t*)region1;
+    int16_t* dst_sample = (int16_t*)region1;
+    int16_t* src_sample = sound_buffer->samples;
     DWORD region1_sample_count = region1_size / sound_output->bytes_per_sample;
     for (DWORD i = 0; i < region1_sample_count; ++i) {
-      float sine_value = sinf(2.0 * PI * sound_output->t_sine);
-      int16_t sample_value = (int16_t)(sine_value * sound_output->tone_volume);
-      *sample_out++ = sample_value;
-      *sample_out++ = sample_value;
-
-      sound_output->t_sine += 1.0f / sound_output->wave_period;
+      *dst_sample++ = *src_sample++;
+      *dst_sample++ = *src_sample++;
       ++sound_output->sample_index;
     }
 
-    sample_out = (int16_t*)region2;
+    dst_sample = (int16_t*)region2;
     DWORD region2_sample_count = region2_size / sound_output->bytes_per_sample;
     for (DWORD i = 0; i < region2_sample_count; ++i) {
-      float sine_value = sinf(2.0 * PI * sound_output->t_sine);
-      int16_t sample_value = (int16_t)(sine_value * sound_output->tone_volume);
-      *sample_out++ = sample_value;
-      *sample_out++ = sample_value;
-
-      sound_output->t_sine += 1.0f / sound_output->wave_period;
+      *dst_sample++ = *src_sample++;
+      *dst_sample++ = *src_sample++;
       ++sound_output->sample_index;
     }
 
@@ -219,7 +239,9 @@ internal WindowDimension GetWindowDimension(HWND window) {
   return result;
 }
 
-internal void ResizeDIBSection(OffscreenBuffer* buffer, int width, int height) {
+internal void Win32ResizeDIBSection(Win32OffscreenBuffer* buffer,
+                                    int width,
+                                    int height) {
   // TODO: Bulletbroof freeing DIBSection.
   // TODO: Maybe not free first, free after, then free first if that fails
   if (buffer->memory) {
@@ -240,14 +262,14 @@ internal void ResizeDIBSection(OffscreenBuffer* buffer, int width, int height) {
 
   int bitmap_memory_size =
       buffer->width * buffer->height * buffer->bytes_per_pixel;
-  buffer->memory =
-      VirtualAlloc(0, bitmap_memory_size, MEM_COMMIT, PAGE_READWRITE);
+  buffer->memory = VirtualAlloc(
+      0, bitmap_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
-internal void DisplayBufferInWindow(OffscreenBuffer* buffer,
-                                    HDC device_context,
-                                    int window_width,
-                                    int window_height) {
+internal void Win32DisplayBufferInWindow(Win32OffscreenBuffer* buffer,
+                                         HDC device_context,
+                                         int window_width,
+                                         int window_height) {
   StretchDIBits(device_context,
                 0,
                 0,
@@ -324,7 +346,7 @@ LRESULT CALLBACK MainWindowCallback(HWND window,
       HDC device_context = BeginPaint(window, &paint);
 
       WindowDimension dimension = GetWindowDimension(window);
-      DisplayBufferInWindow(
+      Win32DisplayBufferInWindow(
           &global_buffer, device_context, dimension.width, dimension.height);
 
       EndPaint(window, &paint);
@@ -348,7 +370,7 @@ int CALLBACK WinMain(HINSTANCE instance,
 
   LoadXInput();
 
-  ResizeDIBSection(&global_buffer, 1280, 720);
+  Win32ResizeDIBSection(&global_buffer, 1280, 720);
 
   WNDCLASSA window_class = {};
   window_class.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
@@ -379,7 +401,7 @@ int CALLBACK WinMain(HINSTANCE instance,
       int x_offset = 0;
       int y_offset = 0;
 
-      SoundOutput sound_output = {};
+      Win32SoundOutput sound_output = {};
       sound_output.samples_per_second = 48000;
       sound_output.bytes_per_sample = sizeof(int16_t) * 2;
       sound_output.secondary_buffer_size =
@@ -390,14 +412,17 @@ int CALLBACK WinMain(HINSTANCE instance,
       sound_output.wave_period =
           sound_output.samples_per_second / sound_output.tone_hz;
 
-      InitDSound(window,
-                 sound_output.samples_per_second,
-                 sound_output.secondary_buffer_size);
-      FillSoundBuffer(
-          &sound_output,
-          0,
-          sound_output.latency_sample_count * sound_output.bytes_per_sample);
+      Win32InitDSound(window,
+                      sound_output.samples_per_second,
+                      sound_output.secondary_buffer_size);
+      Win32ClearSoundBuffer(&sound_output);
       secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
+
+      int16_t* samples =
+          (int16_t*)VirtualAlloc(0,
+                                 sound_output.secondary_buffer_size,
+                                 MEM_RESERVE | MEM_COMMIT,
+                                 PAGE_READWRITE);
 
       LARGE_INTEGER last_counter;
       QueryPerformanceCounter(&last_counter);
@@ -447,26 +472,20 @@ int CALLBACK WinMain(HINSTANCE instance,
           }
         }
 
-        GameOffscreenBuffer buffer = {};
-        buffer.memory = global_buffer.memory;
-        buffer.width = global_buffer.width;
-        buffer.height = global_buffer.height;
-        buffer.pitch = global_buffer.pitch;
-        GameUpdateAndRender(&buffer, x_offset, y_offset);
-
-        // NOTE: DirectSound output test
+        DWORD byte_to_lock;
+        DWORD bytes_to_write;
         DWORD play_cursor;
         DWORD write_cursor;
+        DWORD target_cursor;
+        bool sound_valid = false;
         if (SUCCEEDED(secondary_buffer->GetCurrentPosition(&play_cursor,
                                                            &write_cursor))) {
-          DWORD byte_to_lock =
+          byte_to_lock =
               (sound_output.sample_index * sound_output.bytes_per_sample) %
               sound_output.secondary_buffer_size;
-          DWORD target_cursor =
-              (play_cursor + sound_output.latency_sample_count *
-                                 sound_output.bytes_per_sample) %
-              sound_output.secondary_buffer_size;
-          DWORD bytes_to_write;
+          target_cursor = (play_cursor + sound_output.latency_sample_count *
+                                             sound_output.bytes_per_sample) %
+                          sound_output.secondary_buffer_size;
           if (byte_to_lock > target_cursor) {
             bytes_to_write = sound_output.secondary_buffer_size - byte_to_lock +
                              target_cursor;
@@ -474,11 +493,32 @@ int CALLBACK WinMain(HINSTANCE instance,
             bytes_to_write = target_cursor - byte_to_lock;
           }
 
-          FillSoundBuffer(&sound_output, byte_to_lock, bytes_to_write);
+          sound_valid = true;
+        }
+
+        GameSoundOutputBuffer sound_buffer = {};
+        sound_buffer.samples_per_second = sound_output.samples_per_second;
+        sound_buffer.sample_count =
+            bytes_to_write / sound_output.bytes_per_sample;
+        sound_buffer.samples = samples;
+
+        GameOffscreenBuffer buffer = {};
+        buffer.memory = global_buffer.memory;
+        buffer.width = global_buffer.width;
+        buffer.height = global_buffer.height;
+        buffer.pitch = global_buffer.pitch;
+
+        GameUpdateAndRender(
+            &buffer, x_offset, y_offset, &sound_buffer, sound_output.tone_hz);
+
+        // NOTE: DirectSound output test
+        if (sound_valid) {
+          Win32FillSoundBuffer(
+              &sound_output, byte_to_lock, bytes_to_write, &sound_buffer);
         }
 
         WindowDimension dimension = GetWindowDimension(window);
-        DisplayBufferInWindow(
+        Win32DisplayBufferInWindow(
             &global_buffer, device_context, dimension.width, dimension.height);
 
         LARGE_INTEGER end_counter;

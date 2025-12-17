@@ -18,6 +18,12 @@ struct GameOffscreenBuffer {
   int bytes_per_pixel;
 };
 
-internal void GameUpdateAndRender(GameOffscreenBuffer* buffer);
+struct GameSoundOutputBuffer {
+  int sample_count;
+  int samples_per_second;
+  int16_t *samples;
+};
+
+internal void GameUpdateAndRender(GameOffscreenBuffer* buffer, GameSoundOutputBuffer* sound_buffer, int tone_hz);
 
 #endif
