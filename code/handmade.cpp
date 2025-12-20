@@ -37,11 +37,26 @@ void GameOutputSound(GameSoundOutputBuffer* sound_buffer, int tone_hz) {
   }
 }
 
-internal void GameUpdateAndRender(GameOffscreenBuffer* buffer,
-                                  int x_offset,
-                                  int y_offset,
-                                  GameSoundOutputBuffer* sound_buffer,
-                                  int tone_hz) {
+internal void GameUpdateAndRender(GameInput* input,
+                                  GameOffscreenBuffer* buffer,
+                                  GameSoundOutputBuffer* sound_buffer) {
+  local_persist int x_offset;
+  local_persist int y_offset;
+  local_persist int tone_hz = 256;
+
+  GameControllerInput* input0 = &input->controllers[0];
+  if (input0->is_analog) {
+    // NOTE: using analog movment tuning
+    x_offset += (int)(4 * input0->end_x);
+    tone_hz = 256 + (int)(128 * input0->end_y);
+  } else {
+    // NOTE: using digital movment tuning
+  }
+
+  if (input0->down.ended_down) {
+    y_offset += 1;
+  }
+
   GameOutputSound(sound_buffer, tone_hz);
   RenderWeirdGradient(buffer, x_offset, y_offset);
 }
