@@ -1,6 +1,24 @@
 #if !defined(HANDMADE_H)
 #define HANDMADE_H
 
+
+/* NOTE:
+ *  HANDMADE_INTERNAL:
+ *    0: Build for public release
+ *    1: Build for developers only
+ *  HANDMADE_SLOW:
+ *    0: No slow code allowed
+ *    1: slow code welcome
+ */
+#if HANDMADE_SLOW
+#define Assert(expression) if(!(expression)) {*(volatile int*)0 = 0;}
+#else
+#define Assert(expression)
+#endif
+#define Kilobytes(value) (value * 1024)
+#define Megabytes(value) (Kilobytes(value) * 1024)
+#define Gigabytes(value) (Megabytes(value) * 1024)
+#define Terabytes(value) (Gigabytes(value) * 1024)
 #define ArrayCount(array) sizeof(array) / sizeof((array)[0])
 /*
  * TODO: Services that the platform layer provides to the game
@@ -62,8 +80,25 @@ struct GameInput {
   GameControllerInput controllers[4];
 };
 
-internal void GameUpdateAndRender(GameInput* input,
+struct GameMemory {
+  bool is_initialized;
+
+  uint64_t permanent_storage_size;
+  void * permanent_storage;
+
+  uint64_t transient_storage_size;
+  void * transient_storage;
+};
+
+internal void GameUpdateAndRender(GameMemory* memory, GameInput* input,
                                   GameOffscreenBuffer* buffer,
                                   GameSoundOutputBuffer* sound_buffer);
+
+
+struct GameState {
+  int tone_hz;
+  int x_offset;
+  int y_offset;
+};
 
 #endif
