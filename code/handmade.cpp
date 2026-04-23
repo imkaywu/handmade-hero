@@ -45,6 +45,14 @@ internal void GameUpdateAndRender(GameMemory* memory,
 
   GameState* game_state = (GameState*)memory->permanent_storage;
   if (!memory->is_initialized) {
+    char* file_name = __FILE__;
+    DEBUGReadFileResult file = DEBUGPlatformReadEntireFile(file_name);
+    if (file.contents) {
+      DEBUGPlatformWriteEntireFile(
+          "test.out", file.contents_size, file.contents);
+      DEBUGPlatformFreeFileMemory(file.contents);
+    }
+
     game_state->tone_hz = 256;
 
     // TODO: this might be more appropriate to do in platform layer

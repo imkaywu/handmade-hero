@@ -53,6 +53,72 @@ global_variable x_input_set_state* XInputSetState_ = XInputSetStateStub;
   HRESULT WINAPI name(LPCGUID guid_device, LPDIRECTSOUND* ds, LPUNKNOWN unknown)
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
+internal DEBUGReadFileResult DEBUGPlatformReadEntireFile(char* file_name) {
+  DEBUGReadFileResult result = {};
+
+  HANDLE file_handle = CreateFileA(
+      file_name, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+  if (file_handle != INVALID_HANDLE_VALUE) {
+    LARGE_INTEGER file_size;
+    if (GetFileSizeEx(file_handle, &file_size)) {
+      uint32_t file_size32 = SafeTruncateUInt64(file_size.QuadPart);
+      result.contents = VirtualAlloc(
+          0, file_size32, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+      if (result.contents) {
+        DWORD bytes_read;
+        if (ReadFile(
+                file_handle, result.contents, file_size32, &bytes_read, 0) &&
+            (file_size32 == bytes_read)) {
+          // NOTE: File read successfully
+          result.contents_size = file_size32;
+        } else {
+          // TODO: Logging
+          DEBUGPlatformFreeFileMemory(result.contents);
+          result.contents = 0;
+        }
+      } else {
+        // TODO: Logging
+      }
+    } else {
+      // TODO: Logigng
+    }
+
+    CloseHandle(file_handle);
+  } else {
+    // TODO: Logigng
+  }
+
+  return result;
+}
+
+internal void DEBUGPlatformFreeFileMemory(void* memory) {
+  if (memory) {
+    VirtualFree(memory, 0, MEM_RELEASE);
+  }
+}
+
+internal bool DEBUGPlatformWriteEntireFile(char* file_name,
+                                           uint32_t memory_size,
+                                           void* memory) {
+  bool result = 0;
+
+  HANDLE file_handle =
+      CreateFileA(file_name, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+  if (file_handle != INVALID_HANDLE_VALUE) {
+    DWORD bytes_write;
+    if (WriteFile(file_handle, memory, memory_size, &bytes_write, 0)) {
+      result = (memory_size == bytes_write);
+    } else {
+      // TODO: Logging
+    }
+    CloseHandle(file_handle);
+  } else {
+    // TODO: Logging
+  }
+
+  return result;
+}
+
 internal void LoadXInput() {
   HMODULE xinput_library = LoadLibraryA("xinput1_4.dll");
 
