@@ -10,8 +10,8 @@ internal void RenderWeirdGradient(GameOffscreenBuffer* buffer,
       // LITTLE ENDIAN FORMAT
       // pixel in memory: BB GG RR xx
       // pixel in register: xx RR GG BB
-      uint8_t blue = (x + x_offset);
-      uint8_t green = (y + y_offset);
+      uint8_t blue = (uint8_t)(x + x_offset);
+      uint8_t green = (uint8_t)(y + y_offset);
 
       *pixel++ = ((green << 8) | blue);
     }
@@ -28,7 +28,7 @@ void GameOutputSound(GameSoundOutputBuffer* sound_buffer, int tone_hz) {
 
   int16_t* sample_out = sound_buffer->samples;
   for (int i = 0; i < sound_buffer->sample_count; ++i) {
-    float sine_value = sinf(2.0 * PI * t_sine);
+    float sine_value = sinf(float(2.0 * PI * t_sine));
     int16_t sample_value = (int16_t)(sine_value * tone_volume);
     *sample_out++ = sample_value;
     *sample_out++ = sample_value;

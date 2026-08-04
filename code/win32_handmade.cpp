@@ -258,6 +258,12 @@ internal void Win32FillSoundBuffer(Win32SoundOutput* sound_output,
   }
 }
 
+internal void Win32ProcessKeyboardMessage(GameButtonState* new_state,
+                                          bool is_down) {
+  new_state->ended_down = is_down;
+  new_state->half_transition_count++;
+}
+
 internal void Win32ProcessXInputDigitalButton(DWORD xinput_button_state,
                                               GameButtonState* old_state,
                                               DWORD button_bit,
@@ -349,36 +355,8 @@ LRESULT CALLBACK MainWindowCallback(HWND window,
     case WM_SYSKEYUP:
     case WM_KEYDOWN:
     case WM_KEYUP: {
-      uint32_t vk_code = wparam;
-      bool was_down = (lparam & (1 << 30)) != 0;
-      bool is_down = (lparam & (1 << 31)) == 0;
-      if (is_down != was_down) {
-        if (vk_code == 'W') {
-        } else if (vk_code == 'A') {
-        } else if (vk_code == 'S') {
-        } else if (vk_code == 'D') {
-        } else if (vk_code == 'Q') {
-        } else if (vk_code == 'E') {
-        } else if (vk_code == VK_UP) {
-        } else if (vk_code == VK_DOWN) {
-        } else if (vk_code == VK_LEFT) {
-        } else if (vk_code == VK_RIGHT) {
-        } else if (vk_code == VK_SPACE) {
-        } else if (vk_code == VK_ESCAPE) {
-          std::cout << "ESCAPE: ";
-          if (is_down) {
-            std::cout << "is down ";
-          }
-          if (was_down) {
-            std::cout << "was down\n";
-          }
-        }
-      }
+      Assert(!"Keyboard input came in through a non-dispatch message!");
 
-      bool alt_key_down = (lparam & (1 << 29)) != 0;
-      if (vk_code == VK_F4 && alt_key_down) {
-        running = false;
-      }
     } break;
     case WM_PAINT: {
       PAINTSTRUCT paint;
@@ -487,15 +465,72 @@ int CALLBACK WinMain(HINSTANCE instance,
 
         running = true;
         while (running) {
+          GameControllerInput* keyboard_controller = &new_input->controllers[0];
+          // TODO: Zeroing macro
+          GameControllerInput zero_controller = {};
+          *keyboard_controller = zero_controller;
+
           while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
             if (message.message == WM_QUIT) {
               running = false;
             }
-            TranslateMessage(&message);
-            DispatchMessage(&message);
+
+            switch (message.message) {
+              case WM_SYSKEYDOWN:
+              case WM_SYSKEYUP:
+              case WM_KEYDOWN:
+              case WM_KEYUP: {
+                uint32_t vk_code = (uint32_t)message.wParam;
+                bool was_down = (message.lParam & (1 << 30)) != 0;
+                bool is_down = (message.lParam & (1 << 31)) == 0;
+                if (is_down != was_down) {
+                  if (vk_code == 'W') {
+                  } else if (vk_code == 'A') {
+                  } else if (vk_code == 'S') {
+                  } else if (vk_code == 'D') {
+                  } else if (vk_code == 'Q') {
+                    Win32ProcessKeyboardMessage(
+                        &keyboard_controller->left_shoulder, is_down);
+                  } else if (vk_code == 'E') {
+                    Win32ProcessKeyboardMessage(
+                        &keyboard_controller->right_shoulder, is_down);
+                  } else if (vk_code == VK_UP) {
+                    Win32ProcessKeyboardMessage(&keyboard_controller->up,
+                                                is_down);
+                  } else if (vk_code == VK_DOWN) {
+                    Win32ProcessKeyboardMessage(&keyboard_controller->down,
+                                                is_down);
+                  } else if (vk_code == VK_LEFT) {
+                    Win32ProcessKeyboardMessage(&keyboard_controller->left,
+                                                is_down);
+                  } else if (vk_code == VK_RIGHT) {
+                    Win32ProcessKeyboardMessage(&keyboard_controller->right,
+                                                is_down);
+                  } else if (vk_code == VK_SPACE) {
+                  } else if (vk_code == VK_ESCAPE) {
+                    std::cout << "ESCAPE: ";
+                    if (is_down) {
+                      std::cout << "is down ";
+                    }
+                    if (was_down) {
+                      std::cout << "was down\n";
+                    }
+                  }
+                }
+
+                bool alt_key_down = (message.lParam & (1 << 29)) != 0;
+                if (vk_code == VK_F4 && alt_key_down) {
+                  running = false;
+                }
+              } break;
+              default: {
+                TranslateMessage(&message);
+                DispatchMessage(&message);
+              }
+            }
           }
 
-          int max_controller_count = XUSER_MAX_COUNT;
+          DWORD max_controller_count = XUSER_MAX_COUNT;
           if (ArrayCount(new_input->controllers) < max_controller_count) {
             max_controller_count = ArrayCount(new_input->controllers);
           }
@@ -523,18 +558,18 @@ int CALLBACK WinMain(HINSTANCE instance,
               // TODO: min/max macros
               float x;
               if (pad->sThumbLX < 0) {
-                x = pad->sThumbLX / 32768;
+                x = float(pad->sThumbLX / 32768);
               } else {
-                x = pad->sThumbLX / 32767;
+                x = float(pad->sThumbLX / 32767);
               }
               new_controller.min_x = new_controller.max_x =
                   new_controller.end_x = x;
 
               float y;
               if (pad->sThumbLY < 0) {
-                y = pad->sThumbLY / 32768;
+                y = float(pad->sThumbLY / 32768);
               } else {
-                y = pad->sThumbLY / 32767;
+                y = float(pad->sThumbLY / 32767);
               }
               new_controller.min_y = new_controller.max_y =
                   new_controller.end_y = y;
@@ -571,8 +606,8 @@ int CALLBACK WinMain(HINSTANCE instance,
             }
           }
 
-          DWORD byte_to_lock;
-          DWORD bytes_to_write;
+          DWORD byte_to_lock = 0;
+          DWORD bytes_to_write = 0;
           DWORD play_cursor;
           DWORD write_cursor;
           DWORD target_cursor;
