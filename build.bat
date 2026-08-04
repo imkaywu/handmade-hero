@@ -3,6 +3,5 @@
 IF NOT EXIST build mkdir build
 pushd build
 
-clang++ -DHANDMADE_INTERNAL=1 -DHANDMADE_SLOW=1 -std=c++20 -g -O0 ../code/win32_handmade.cpp -o main -luser32 -lgdi32
-
+cl -DHANDMADE_INTERNAL=1 -DHANDMADE_SLOW=1 -FC -Zi ../code/win32_handmade.cpp user32.lib gdi32.lib
 popd

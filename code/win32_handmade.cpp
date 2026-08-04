@@ -1,4 +1,5 @@
 #include <dsound.h>
+#include <intrin.h>
 #include <math.h>
 #include <stdint.h>
 #include <windows.h>
@@ -20,18 +21,6 @@
 global_variable bool running;
 global_variable Win32OffscreenBuffer global_buffer;
 global_variable LPDIRECTSOUNDBUFFER secondary_buffer;
-
-// NOTE:
-//   - MSVC x86/x64: __rdtsc()
-//   - GCC/LLVM ARM64: __builtin_readcyclecounter()
-//   - GCC/LLVM inline assembly
-internal inline uint64_t rdtsc() {
-  return __builtin_readcyclecounter();
-
-  uint64_t cnt;
-  __asm__ __volatile__("mrs %0, cntvct_el0" : "=r"(cnt));
-  return cnt;
-}
 
 // NOTE: XInputGetState
 #define X_INPUT_GET_STATE(name) \
@@ -494,7 +483,7 @@ int CALLBACK WinMain(HINSTANCE instance,
         LARGE_INTEGER last_counter;
         QueryPerformanceCounter(&last_counter);
 
-        uint64_t last_cycle_count = rdtsc();
+        uint64_t last_cycle_count = __rdtsc();
 
         running = true;
         while (running) {
@@ -639,7 +628,7 @@ int CALLBACK WinMain(HINSTANCE instance,
           float ms_per_frame = 1000.0f * counter_elapsed / perf_count_frequency;
           float fps = (float)perf_count_frequency / counter_elapsed;
 
-          uint64_t end_cycle_count = rdtsc();
+          uint64_t end_cycle_count = __rdtsc();
           uint64_t cycle_elapsed = end_cycle_count - last_cycle_count;
           float micro_cycle_per_frame = cycle_elapsed / (1000.0f * 1000.0f);
 
